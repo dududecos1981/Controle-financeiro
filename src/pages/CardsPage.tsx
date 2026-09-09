@@ -55,7 +55,7 @@ interface ContaWithMetrics extends Conta {
 export const CardsPage: React.FC = () => {
   const { user } = useAuth();
 
-  // Active Main Tab: 'cartoes' (Crédito) | 'debito' (Débito & Contas) | 'limite_especial' (Cheque Especial)
+  // Active Main Tab: 'cartoes' (Crédito) | 'debito' (Débito & Contas) | 'limite_especial' (Cartão com Limite Especial)
   const [activeTab, setActiveTab] = useState<'cartoes' | 'debito' | 'limite_especial'>('cartoes');
 
   // Credit Cards State
@@ -69,7 +69,7 @@ export const CardsPage: React.FC = () => {
   const [selectedDebitContaId, setSelectedDebitContaId] = useState<string>('todos');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Special Limits (Cheque / Limite Especial) State
+  // Special Limits (Cartões com Limite Especial / Cheque Especial) State
   const [specialLimits, setSpecialLimits] = useState<SpecialLimitWithMetrics[]>([]);
   const [isLoadingSpecialLimits, setIsLoadingSpecialLimits] = useState(false);
   const [selectedSpecialLimitId, setSelectedSpecialLimitId] = useState<string>('todos');
@@ -120,7 +120,7 @@ export const CardsPage: React.FC = () => {
   const [isSubmittingDebitTx, setIsSubmittingDebitTx] = useState(false);
   const [debitTxErrorMessage, setDebitTxErrorMessage] = useState<string | null>(null);
 
-  // Modal 5: Adicionar / Editar Limite Especial
+  // Modal 5: Adicionar / Editar Cartão com Limite Especial
   const [isSpecialLimitModalOpen, setIsSpecialLimitModalOpen] = useState(false);
   const [editingSpecialLimit, setEditingSpecialLimit] = useState<LimiteEspecial | null>(null);
   const [spNomeInstituicao, setSpNomeInstituicao] = useState('');
@@ -132,7 +132,7 @@ export const CardsPage: React.FC = () => {
   const [isSubmittingSpecialLimit, setIsSubmittingSpecialLimit] = useState(false);
   const [specialLimitErrorMessage, setSpecialLimitErrorMessage] = useState<string | null>(null);
 
-  // Modal 6: Lançar Utilização / Amortização de Limite Especial
+  // Modal 6: Lançar Utilização / Amortização de Cartão com Limite Especial
   const [isSpTxModalOpen, setIsSpTxModalOpen] = useState(false);
   const [spTxLimitId, setSpTxLimitId] = useState('');
   const [spTxTipo, setSpTxTipo] = useState<'Utilização' | 'Amortização'>('Utilização');
@@ -661,7 +661,7 @@ export const CardsPage: React.FC = () => {
   };
 
   // =========================================================================
-  // HANDLERS: LIMITE ESPECIAL (CHEQUE ESPECIAL)
+  // HANDLERS: CARTÃO COM LIMITE ESPECIAL (CHEQUE ESPECIAL)
   // =========================================================================
   const handleOpenCreateSpecialLimit = () => {
     setEditingSpecialLimit(null);
@@ -694,7 +694,7 @@ export const CardsPage: React.FC = () => {
 
     const numLimite = parseFloat(spLimiteTotal.replace(',', '.'));
     if (!spNomeInstituicao.trim() || isNaN(numLimite) || numLimite <= 0) {
-      setSpecialLimitErrorMessage('Informe o nome da instituição e um limite total válido maior que zero.');
+      setSpecialLimitErrorMessage('Informe o nome do cartão/instituição e um limite total válido maior que zero.');
       return;
     }
 
@@ -712,7 +712,7 @@ export const CardsPage: React.FC = () => {
           dia_vencimento: diaVenc,
           observacoes: spObservacoes.trim() || null
         });
-        showToast('Limite Especial atualizado com sucesso!');
+        showToast('Cartão com Limite Especial atualizado com sucesso!');
       } else {
         await createSpecialLimit(user.id, {
           nome_instituicao: spNomeInstituicao.trim(),
@@ -722,15 +722,15 @@ export const CardsPage: React.FC = () => {
           dia_vencimento: diaVenc,
           observacoes: spObservacoes.trim() || null
         });
-        showToast('Limite Especial cadastrado com sucesso!');
+        showToast('Cartão com Limite Especial cadastrado com sucesso!');
       }
 
       setIsSpecialLimitModalOpen(false);
       setEditingSpecialLimit(null);
       await loadSpecialLimitsData();
     } catch (err) {
-      console.error('Erro ao salvar limite especial:', err);
-      setSpecialLimitErrorMessage('Erro ao persistir o limite especial.');
+      console.error('Erro ao salvar cartão com limite especial:', err);
+      setSpecialLimitErrorMessage('Erro ao persistir o cartão com limite especial.');
     } finally {
       setIsSubmittingSpecialLimit(false);
     }
@@ -738,17 +738,17 @@ export const CardsPage: React.FC = () => {
 
   const handleDeleteSpecialLimit = async (limit: SpecialLimitWithMetrics) => {
     if (!user?.id) return;
-    const confirmed = window.confirm(`Deseja excluir o Limite Especial "${limit.nome_instituicao}" e seu histórico?`);
+    const confirmed = window.confirm(`Deseja excluir o Cartão com Limite Especial "${limit.nome_instituicao}" e seu histórico?`);
     if (!confirmed) return;
 
     try {
       setDeletingSpLimitId(limit.id);
       await deleteSpecialLimit(user.id, limit.id);
-      showToast('Limite Especial excluído.');
+      showToast('Cartão com Limite Especial excluído.');
       await loadSpecialLimitsData();
     } catch (err) {
-      console.error('Erro ao excluir limite especial:', err);
-      alert('Não foi possível excluir o limite especial.');
+      console.error('Erro ao excluir cartão com limite especial:', err);
+      alert('Não foi possível excluir.');
     } finally {
       setDeletingSpLimitId(null);
     }
@@ -764,7 +764,7 @@ export const CardsPage: React.FC = () => {
     setSpTxTipo(defaultTipo);
     setSpTxValor('');
     setSpTxData(new Date().toISOString().split('T')[0]);
-    setSpTxDescricao(defaultTipo === 'Utilização' ? 'Uso do Cheque Especial' : 'Cobertura / Amortização');
+    setSpTxDescricao(defaultTipo === 'Utilização' ? 'Uso do Limite Especial' : 'Cobertura / Amortização');
     setSpTxObservacoes('');
     setSpTxErrorMessage(null);
     setIsSpTxModalOpen(true);
@@ -782,7 +782,7 @@ export const CardsPage: React.FC = () => {
     }
 
     if (!spTxLimitId) {
-      setSpTxErrorMessage('Selecione o limite especial correspondente.');
+      setSpTxErrorMessage('Selecione o cartão com limite especial correspondente.');
       return;
     }
 
@@ -806,7 +806,7 @@ export const CardsPage: React.FC = () => {
       setIsSpTxModalOpen(false);
       await loadSpecialLimitsData();
     } catch (err) {
-      console.error('Erro ao salvar operação de limite especial:', err);
+      console.error('Erro ao salvar operação:', err);
       setSpTxErrorMessage('Erro ao persistir a operação.');
     } finally {
       setIsSubmittingSpTx(false);
@@ -821,7 +821,7 @@ export const CardsPage: React.FC = () => {
       showToast('Movimentação excluída.');
       await loadSpecialLimitsData();
     } catch (err) {
-      console.error('Erro ao excluir transação de limite especial:', err);
+      console.error('Erro ao excluir transação:', err);
     }
   };
 
@@ -949,14 +949,14 @@ export const CardsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Main Tabs Header: Cartões de Crédito vs Cartões de Débito vs Limite Especial */}
+      {/* Main Tabs Header: Cartões de Crédito vs Cartões de Débito vs Cartões com Limite Especial */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <h2 className="text-2xl font-extrabold text-white tracking-tight">
             Gestão de Cartões, Contas & Limites
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Controle cartões de crédito, cartões de débito com saldo em conta e linhas de crédito especial
+            Controle cartões de crédito, cartões de débito com saldo em conta e cartões com limites especiais
           </p>
         </div>
 
@@ -994,7 +994,7 @@ export const CardsPage: React.FC = () => {
             </span>
           </button>
 
-          {/* TAB 3: Limite Especial */}
+          {/* TAB 3: Cartões com Limite Especial */}
           <button
             onClick={() => setActiveTab('limite_especial')}
             className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
@@ -1004,7 +1004,7 @@ export const CardsPage: React.FC = () => {
             }`}
           >
             <Zap className="w-4 h-4 stroke-[2.5]" />
-            <span>Limite Especial</span>
+            <span>Cartões com Limite Especial</span>
             <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-black/20 text-slate-950 font-mono font-bold">
               {specialLimits.length}
             </span>
@@ -1044,6 +1044,14 @@ export const CardsPage: React.FC = () => {
                 <PlusCircle className="w-4 h-4 stroke-[2.5]" />
                 <span>Adicionar Cartão de Crédito</span>
               </button>
+
+              <button
+                onClick={handleOpenCreateSpecialLimit}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Zap className="w-4 h-4 stroke-[2.5]" />
+                <span>+ Cartão com Limite Especial</span>
+              </button>
             </div>
           </div>
 
@@ -1065,13 +1073,22 @@ export const CardsPage: React.FC = () => {
                   Cadastre seus cartões de crédito para calcular limites, faturas e parcelamentos automaticamente.
                 </p>
               </div>
-              <button
-                onClick={handleOpenCreateCard}
-                className="py-2.5 px-5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-indigo-500/20"
-              >
-                <PlusCircle className="w-4 h-4 stroke-[2.5]" />
-                <span>Cadastrar Primeiro Cartão</span>
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={handleOpenCreateCard}
+                  className="py-2.5 px-5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-indigo-500/20"
+                >
+                  <PlusCircle className="w-4 h-4 stroke-[2.5]" />
+                  <span>Cadastrar Cartão de Crédito</span>
+                </button>
+                <button
+                  onClick={handleOpenCreateSpecialLimit}
+                  className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-amber-500/20"
+                >
+                  <Zap className="w-4 h-4 stroke-[2.5]" />
+                  <span>Cadastrar Cartão com Limite Especial</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1361,6 +1378,14 @@ export const CardsPage: React.FC = () => {
               >
                 <PlusCircle className="w-4 h-4 stroke-[2.5]" />
                 <span>Adicionar Cartão de Débito</span>
+              </button>
+
+              <button
+                onClick={handleOpenCreateSpecialLimit}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Zap className="w-4 h-4 stroke-[2.5]" />
+                <span>+ Cartão com Limite Especial</span>
               </button>
             </div>
           </div>
@@ -1696,7 +1721,7 @@ export const CardsPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* ABA 3: LIMITE ESPECIAL (CHEQUE ESPECIAL / CRÉDITO ESPECIAL) */}
+      {/* ABA 3: CARTÕES COM LIMITE ESPECIAL (CHEQUE ESPECIAL / CRÉDITO ROTATIVO) */}
       {/* ========================================================================= */}
       {activeTab === 'limite_especial' && (
         <div className="space-y-8 animate-in fade-in duration-300">
@@ -1705,12 +1730,12 @@ export const CardsPage: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Crédito Rotativo
+                  Crédito Rotativo & Cheque Especial
                 </span>
-                <h3 className="text-lg font-bold text-white tracking-tight">Limite & Cheque Especial</h3>
+                <h3 className="text-lg font-bold text-white tracking-tight">Cartões com Limite Especial</h3>
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Monitore linhas de crédito especial bancárias, juros incidentes, saldo em uso e coberturas
+                Monitore cartões e contas com limites especiais contratados, taxas de juros, saldo em uso e amortizações
               </p>
             </div>
 
@@ -1725,12 +1750,13 @@ export const CardsPage: React.FC = () => {
                 </button>
               )}
 
+              {/* Botão de Destaque para Adicionar Novo Cartão com Limite Especial */}
               <button
                 onClick={handleOpenCreateSpecialLimit}
-                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white font-bold text-xs shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-extrabold text-xs shadow-xl shadow-amber-500/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95 ring-1 ring-amber-300/40"
               >
-                <PlusCircle className="w-4 h-4 stroke-[2.5]" />
-                <span>Cadastrar Limite Especial</span>
+                <PlusCircle className="w-4 h-4 stroke-[3]" />
+                <span>+ Adicionar Cartão com Limite Especial</span>
               </button>
             </div>
           </div>
@@ -1795,17 +1821,17 @@ export const CardsPage: React.FC = () => {
                 <Zap className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Nenhum Limite Especial cadastrado</h3>
+                <h3 className="text-base font-bold text-white">Nenhum cartão com limite especial cadastrado</h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                  Cadastre seus limites de cheque especial ou linhas de crédito bancárias para monitorar juros e valores em uso.
+                  Cadastre seus cartões ou contas bancárias com limite de cheque especial ou crédito rotativo contratado.
                 </p>
               </div>
               <button
                 onClick={handleOpenCreateSpecialLimit}
-                className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-amber-500/20"
+                className="py-3 px-6 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/25"
               >
-                <PlusCircle className="w-4 h-4 stroke-[2.5]" />
-                <span>Cadastrar Primeiro Limite Especial</span>
+                <PlusCircle className="w-4 h-4 stroke-[3]" />
+                <span>+ Adicionar Cartão com Limite Especial</span>
               </button>
             </div>
           ) : (
@@ -1823,18 +1849,18 @@ export const CardsPage: React.FC = () => {
                     {/* Header: Institution & Actions */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Zap className="w-3.5 h-3.5 text-amber-400" />
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
-                            Limite Especial
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-amber-400" />
+                            <span>CARTÃO COM LIMITE ESPECIAL</span>
                           </span>
                         </div>
-                        <h3 className="text-xl font-extrabold text-white mt-0.5 truncate" title={limit.nome_instituicao}>
+                        <h3 className="text-xl font-extrabold text-white mt-1.5 truncate" title={limit.nome_instituicao}>
                           {limit.nome_instituicao}
                         </h3>
                         {limit.conta_nome && (
                           <span className="text-[11px] text-slate-400 block mt-0.5">
-                            Conta: {limit.conta_nome}
+                            Conta Vinculada: {limit.conta_nome}
                           </span>
                         )}
                       </div>
@@ -1856,14 +1882,14 @@ export const CardsPage: React.FC = () => {
                         </button>
                         <button
                           onClick={() => handleOpenEditSpecialLimit(limit)}
-                          title="Editar limite especial"
+                          title="Editar dados do cartão com limite especial"
                           className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer backdrop-blur-sm shadow-sm"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDeleteSpecialLimit(limit)}
-                          title="Excluir limite especial"
+                          title="Excluir"
                           className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white transition-all cursor-pointer backdrop-blur-sm border border-rose-500/20"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1951,7 +1977,7 @@ export const CardsPage: React.FC = () => {
 
               {specialLimits.length > 1 && (
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-slate-400">Filtrar por Limite:</label>
+                  <label className="text-xs text-slate-400">Filtrar por Cartão / Limite:</label>
                   <select
                     value={selectedSpecialLimitId}
                     onChange={(e) => setSelectedSpecialLimitId(e.target.value)}
@@ -1984,7 +2010,7 @@ export const CardsPage: React.FC = () => {
                   <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
                     <tr>
                       <th className="py-3 px-4">Descrição / Operação</th>
-                      <th className="py-3 px-4">Instituição</th>
+                      <th className="py-3 px-4">Instituição / Cartão</th>
                       <th className="py-3 px-4">Data</th>
                       <th className="py-3 px-4 text-center">Tipo</th>
                       <th className="py-3 px-4 text-right">Valor</th>
@@ -2156,6 +2182,24 @@ export const CardsPage: React.FC = () => {
                   />
                   <span className="text-[10px] text-slate-500 mt-1 block">Pagamento da fatura</span>
                 </div>
+              </div>
+
+              {/* Dica para cadastrar Limite Especial */}
+              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-amber-300 text-[11px]">
+                  <Zap className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>Possui Limite Especial / Cheque Especial neste banco?</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCardModalOpen(false);
+                    handleOpenCreateSpecialLimit();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] cursor-pointer shrink-0 transition-colors"
+                >
+                  Cadastrar Limite
+                </button>
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
@@ -2772,7 +2816,7 @@ export const CardsPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 5: Cadastrar / Editar Limite Especial */}
+      {/* MODAL 5: Cadastrar / Editar Cartão com Limite Especial */}
       {/* ========================================================================= */}
       {isSpecialLimitModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -2784,10 +2828,10 @@ export const CardsPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">
-                    {editingSpecialLimit ? 'Editar Limite Especial' : 'Cadastrar Limite Especial'}
+                    {editingSpecialLimit ? 'Editar Cartão com Limite Especial' : 'Cadastrar Cartão com Limite Especial'}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Defina o cheque especial ou linha de crédito rotativo
+                    Defina o cartão/instituição com cheque especial ou limite rotativo contratado
                   </p>
                 </div>
               </div>
@@ -2812,11 +2856,11 @@ export const CardsPage: React.FC = () => {
             <form onSubmit={handleSaveSpecialLimit} className="mt-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Nome da Linha / Instituição *
+                  Nome do Cartão / Instituição Bancária *
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Itaú Cheque Especial, Santander LIS, BB Giro"
+                  placeholder="Ex: Itaú Cartão com Limite Especial, Santander LIS, BB Giro, Nubank"
                   value={spNomeInstituicao}
                   onChange={(e) => setSpNomeInstituicao(e.target.value)}
                   required
@@ -2844,7 +2888,7 @@ export const CardsPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Limite Total Contratado (R$) *
+                  Limite Especial Contratado no Cartão (R$) *
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -2881,7 +2925,7 @@ export const CardsPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Dia Cobrança / Venc.
+                    Dia Cobrança / Vencimento
                   </label>
                   <input
                     type="number"
@@ -2922,7 +2966,7 @@ export const CardsPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmittingSpecialLimit}
-                  className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingSpecialLimit ? (
                     <>
@@ -2932,7 +2976,7 @@ export const CardsPage: React.FC = () => {
                   ) : editingSpecialLimit ? (
                     'Salvar Alterações'
                   ) : (
-                    'Cadastrar Limite Especial'
+                    'Cadastrar Cartão com Limite Especial'
                   )}
                 </button>
               </div>
@@ -2942,7 +2986,7 @@ export const CardsPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 6: Lançar Utilização / Amortização de Limite Especial */}
+      {/* MODAL 6: Lançar Utilização / Amortização de Cartão com Limite Especial */}
       {/* ========================================================================= */}
       {isSpTxModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -2953,7 +2997,7 @@ export const CardsPage: React.FC = () => {
                   <Zap className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Movimentação do Limite Especial</h3>
+                  <h3 className="text-lg font-bold text-white">Movimentação do Cartão com Limite Especial</h3>
                   <p className="text-xs text-slate-400">
                     Registre a utilização (saída) ou cobertura/amortização (entrada)
                   </p>
@@ -2982,7 +3026,7 @@ export const CardsPage: React.FC = () => {
                   onClick={() => {
                     setSpTxTipo('Utilização');
                     if (!spTxDescricao || spTxDescricao === 'Cobertura / Amortização') {
-                      setSpTxDescricao('Uso do Cheque Especial');
+                      setSpTxDescricao('Uso do Limite Especial');
                     }
                   }}
                   className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
@@ -2999,7 +3043,7 @@ export const CardsPage: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setSpTxTipo('Amortização');
-                    if (!spTxDescricao || spTxDescricao === 'Uso do Cheque Especial') {
+                    if (!spTxDescricao || spTxDescricao === 'Uso do Limite Especial') {
                       setSpTxDescricao('Cobertura / Amortização');
                     }
                   }}
@@ -3014,10 +3058,10 @@ export const CardsPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* Seleção do Limite Especial */}
+              {/* Seleção do Cartão com Limite Especial */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Linha de Limite Especial *
+                  Cartão com Limite Especial *
                 </label>
                 <select
                   value={spTxLimitId}
