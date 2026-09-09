@@ -93,7 +93,7 @@ export const DashboardPage: React.FC = () => {
             <span>Painel em Tempo Real</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Olá, {user?.nome?.split(' ')[0] || 'Usuário'}! 👋
+            Olá, {typeof user?.nome === 'string' && user.nome ? user.nome.split(' ')[0] : (user?.nome || 'Usuário')}! 👋
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Aqui está o resumo consolidado da sua saúde financeira e locatícia.

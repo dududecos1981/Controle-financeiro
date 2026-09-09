@@ -24,13 +24,22 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return 'Sem data';
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}`;
+  const formatDate = (dateVal?: string | Date | null) => {
+    if (!dateVal) return 'Sem data';
+    try {
+      if (typeof dateVal === 'string') {
+        const dateOnly = dateVal.split('T')[0];
+        const parts = dateOnly.split('-');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}`;
+        }
+      }
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return 'Sem data';
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    } catch {
+      return 'Sem data';
     }
-    return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
 
   return (
