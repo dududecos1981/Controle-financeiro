@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { createTransaction } from '../../services/dashboardService';
+import { createTransaction, createCardPurchase } from '../../services/dashboardService';
 import { getDb } from '../../lib/neon';
 import type { Conta, CartaoCredito } from '../../types/database';
 import {
@@ -17,7 +17,8 @@ import {
   ArrowRight,
   ArrowLeft,
   X,
-  FileCheck
+  FileCheck,
+  Check
 } from 'lucide-react';
 
 interface TransactionFormProps {
@@ -53,6 +54,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   // Form Fields - Tab 2: Detalhes Adicionais
   const [contaId, setContaId] = useState('');
   const [cartaoId, setCartaoId] = useState('');
+  const [parcelas, setParcelas] = useState('1');
   const [recorrente, setRecorrente] = useState(false);
   const [frequencia, setFrequencia] = useState('Mensal');
   const [observacoes, setObservacoes] = useState('');
@@ -197,24 +199,42 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       // Amount: Negative for expense, Positive for income
       const finalValor = tipo === 'despesa' ? -Math.abs(numValor) : Math.abs(numValor);
       const finalStatus = tipo === 'receita' && status === 'Pago' ? 'Recebido' : status;
+      const numParcelas = parseInt(parcelas, 10) || 1;
 
-      await createTransaction(user.id, {
-        conta_id: contaId,
-        cartao_id: cartaoId ? cartaoId : null,
-        descricao: descricao.trim(),
-        categoria,
-        valor: finalValor,
-        data_vencimento: dataVencimento,
-        data_pagamento: (finalStatus === 'Pago' || finalStatus === 'Recebido') && dataPagamento ? dataPagamento : undefined,
-        status: finalStatus,
-        observacoes: observacoes.trim() || null,
-        anexo_nome: anexoNome,
-        anexo_base64: anexoBase64,
-        recorrente,
-        frequencia: recorrente ? frequencia : null
-      });
+      if (tipo === 'despesa' && cartaoId && numParcelas > 1) {
+        await createCardPurchase(user.id, {
+          conta_id: contaId,
+          cartao_id: cartaoId,
+          descricao: descricao.trim(),
+          categoria,
+          valorTotal: numValor,
+          parcelas: numParcelas,
+          dataPrimeiraParcela: dataVencimento,
+          observacoes: observacoes.trim() || null
+        });
+      } else {
+        await createTransaction(user.id, {
+          conta_id: contaId,
+          cartao_id: cartaoId ? cartaoId : null,
+          descricao: descricao.trim(),
+          categoria,
+          valor: finalValor,
+          data_vencimento: dataVencimento,
+          data_pagamento: (finalStatus === 'Pago' || finalStatus === 'Recebido') && dataPagamento ? dataPagamento : undefined,
+          status: finalStatus,
+          observacoes: observacoes.trim() || null,
+          anexo_nome: anexoNome,
+          anexo_base64: anexoBase64,
+          recorrente,
+          frequencia: recorrente ? frequencia : null
+        });
+      }
 
-      setSuccessMessage('Transação registrada com sucesso!');
+      setSuccessMessage(
+        numParcelas > 1
+          ? `Compra parcelada em ${numParcelas}x registrada com sucesso!`
+          : 'Transação registrada com sucesso!'
+      );
       window.dispatchEvent(new Event('transaction-created'));
 
       setTimeout(() => {
@@ -560,6 +580,49 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                 </select>
               </div>
             </div>
+
+            {/* Parcelamento quando Cartão for selecionado */}
+            {tipo === 'despesa' && cartaoId && (
+              <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2.5 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-indigo-300">
+                    Número de Parcelas da Compra:
+                  </label>
+                  <select
+                    value={parcelas}
+                    onChange={(e) => setParcelas(e.target.value)}
+                    className="py-1.5 px-3 bg-slate-900 text-white text-xs rounded-xl border border-slate-700 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="1">1x à vista (Sem parcelamento)</option>
+                    <option value="2">2x parcelas</option>
+                    <option value="3">3x parcelas</option>
+                    <option value="4">4x parcelas</option>
+                    <option value="5">5x parcelas</option>
+                    <option value="6">6x parcelas</option>
+                    <option value="7">7x parcelas</option>
+                    <option value="8">8x parcelas</option>
+                    <option value="9">9x parcelas</option>
+                    <option value="10">10x parcelas</option>
+                    <option value="12">12x parcelas</option>
+                    <option value="18">18x parcelas</option>
+                    <option value="24">24x parcelas</option>
+                  </select>
+                </div>
+
+                {parseInt(parcelas, 10) > 1 && parseFloat(valor.replace(',', '.')) > 0 && (
+                  <div className="pt-2 border-t border-indigo-500/20 flex items-center justify-between text-xs text-indigo-300">
+                    <span className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      Valor por parcela:
+                    </span>
+                    <strong className="font-mono text-emerald-400 font-extrabold">
+                      {parcelas}x de R${' '}
+                      {(parseFloat(valor.replace(',', '.')) / parseInt(parcelas, 10)).toFixed(2)}
+                    </strong>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Recorrência */}
             <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">

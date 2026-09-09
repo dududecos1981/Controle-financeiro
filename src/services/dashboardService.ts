@@ -254,3 +254,70 @@ export async function createTransaction(
   `;
 }
 
+/**
+ * Cria uma compra com cartão de crédito com suporte a parcelamento automático
+ */
+export async function createCardPurchase(
+  userId: string,
+  data: {
+    conta_id: string;
+    cartao_id: string;
+    descricao: string;
+    categoria: string;
+    valorTotal: number;
+    parcelas: number;
+    dataPrimeiraParcela: string;
+    observacoes?: string | null;
+  }
+) {
+  const sql = getDb();
+  await sql`SELECT set_config('app.current_user_id', ${userId}, true);`;
+
+  const totalParcelas = Math.max(1, data.parcelas || 1);
+  const valorTotalAbs = Math.abs(data.valorTotal);
+  const valorBaseParcela = Math.floor((valorTotalAbs / totalParcelas) * 100) / 100;
+  const diferencaCentavos = Math.round((valorTotalAbs - (valorBaseParcela * totalParcelas)) * 100) / 100;
+
+  const baseDate = new Date(data.dataPrimeiraParcela + 'T12:00:00Z');
+
+  for (let i = 1; i <= totalParcelas; i++) {
+    const installmentDate = new Date(baseDate);
+    installmentDate.setMonth(installmentDate.getMonth() + (i - 1));
+    const dataVenc = installmentDate.toISOString().split('T')[0];
+
+    // Distribute remaining cents on the first installment
+    const valorParcela = i === 1 ? -(valorBaseParcela + diferencaCentavos) : -valorBaseParcela;
+
+    const desc = totalParcelas > 1 
+      ? `${data.descricao.trim()} (${i}/${totalParcelas})` 
+      : data.descricao.trim();
+
+    const obs = totalParcelas > 1
+      ? `Compra parcelada em ${totalParcelas}x de R$ ${valorBaseParcela.toFixed(2)}${data.observacoes ? ` - ${data.observacoes.trim()}` : ''}`
+      : (data.observacoes?.trim() || null);
+
+    await sql`
+      INSERT INTO transacoes (
+        conta_id,
+        cartao_id,
+        descricao,
+        categoria,
+        valor,
+        data_vencimento,
+        status,
+        observacoes
+      )
+      VALUES (
+        ${data.conta_id},
+        ${data.cartao_id},
+        ${desc},
+        ${data.categoria},
+        ${valorParcela},
+        ${dataVenc},
+        'Pendente',
+        ${obs}
+      );
+    `;
+  }
+}
+
