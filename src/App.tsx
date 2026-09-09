@@ -14,36 +14,40 @@ import { SettingsPage } from './pages/SettingsPage';
 import { NewTransactionPage } from './pages/NewTransactionPage';
 import { PropertyDetailsPage } from './pages/PropertyDetailsPage';
 
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public Exclusive Routes */}
-          <Route element={<PublicOnlyRoute />}>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/cadastro" element={<RegisterPage />} />
-          </Route>
-
-          {/* Protected Application Routes */}
-          <Route element={<ProtectedRoute />}>
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/transacoes" element={<TransactionsPage />} />
-              <Route path="/transacoes/novo" element={<NewTransactionPage />} />
-              <Route path="/cartoes" element={<CardsPage />} />
-              <Route path="/imoveis" element={<PropertiesPage />} />
-              <Route path="/imoveis/:id" element={<PropertyDetailsPage />} />
-              <Route path="/configuracoes" element={<SettingsPage />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public Exclusive Routes */}
+            <Route element={<PublicOnlyRoute />}>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/cadastro" element={<RegisterPage />} />
             </Route>
-          </Route>
 
-          {/* Fallback Redirections */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            {/* Protected Application Routes */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/transacoes" element={<TransactionsPage />} />
+                <Route path="/transacoes/novo" element={<NewTransactionPage />} />
+                <Route path="/cartoes" element={<CardsPage />} />
+                <Route path="/imoveis" element={<PropertiesPage />} />
+                <Route path="/imoveis/:id" element={<PropertyDetailsPage />} />
+                <Route path="/configuracoes" element={<SettingsPage />} />
+              </Route>
+            </Route>
+
+            {/* Fallback Redirections */}
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
 
