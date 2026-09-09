@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getDb } from '../lib/neon';
-import { createCardPurchase } from '../services/dashboardService';
+import { createCardPurchase, createTransaction } from '../services/dashboardService';
 import {
   fetchSpecialLimits,
   createSpecialLimit,
@@ -32,7 +32,11 @@ import {
   Landmark,
   Percent,
   ArrowDownRight,
-  ArrowUpRight
+  ArrowUpRight,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  ArrowDownLeft
 } from 'lucide-react';
 
 interface CardWithMetrics extends CartaoCredito {
@@ -41,17 +45,28 @@ interface CardWithMetrics extends CartaoCredito {
   percentualUtilizado: number;
 }
 
+interface ContaWithMetrics extends Conta {
+  saldoAtual: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  transacoesCount: number;
+}
+
 export const CardsPage: React.FC = () => {
   const { user } = useAuth();
 
-  // Active Main Tab: 'cartoes' | 'limite_especial'
-  const [activeTab, setActiveTab] = useState<'cartoes' | 'limite_especial'>('cartoes');
+  // Active Main Tab: 'cartoes' (Crédito) | 'debito' (Débito & Contas) | 'limite_especial' (Cheque Especial)
+  const [activeTab, setActiveTab] = useState<'cartoes' | 'debito' | 'limite_especial'>('cartoes');
 
   // Credit Cards State
   const [cards, setCards] = useState<CardWithMetrics[]>([]);
   const [contas, setContas] = useState<Conta[]>([]);
+  const [contasWithMetrics, setContasWithMetrics] = useState<ContaWithMetrics[]>([]);
   const [cardTransactions, setCardTransactions] = useState<(Transacao & { cartao_nome?: string })[]>([]);
+  const [debitTransactions, setDebitTransactions] = useState<(Transacao & { conta_nome?: string })[]>([]);
+  
   const [selectedCardId, setSelectedCardId] = useState<string>('todos');
+  const [selectedDebitContaId, setSelectedDebitContaId] = useState<string>('todos');
   const [isLoading, setIsLoading] = useState(true);
 
   // Special Limits (Cheque / Limite Especial) State
@@ -69,7 +84,7 @@ export const CardsPage: React.FC = () => {
   const [isSubmittingCard, setIsSubmittingCard] = useState(false);
   const [cardErrorMessage, setCardErrorMessage] = useState<string | null>(null);
 
-  // Modal 2: Nova Compra com Parcelamento (Cartão)
+  // Modal 2: Nova Compra com Parcelamento (Cartão Crédito)
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [purchaseCartaoId, setPurchaseCartaoId] = useState('');
   const [purchaseContaId, setPurchaseContaId] = useState('');
@@ -84,7 +99,28 @@ export const CardsPage: React.FC = () => {
   const [isSubmittingPurchase, setIsSubmittingPurchase] = useState(false);
   const [purchaseErrorMessage, setPurchaseErrorMessage] = useState<string | null>(null);
 
-  // Modal 3: Adicionar / Editar Limite Especial
+  // Modal 3: Adicionar / Editar Cartão de Débito / Conta Bancária
+  const [isDebitAccountModalOpen, setIsDebitAccountModalOpen] = useState(false);
+  const [editingDebitAccount, setEditingDebitAccount] = useState<Conta | null>(null);
+  const [debitNomeInstituicao, setDebitNomeInstituicao] = useState('');
+  const [debitTipoConta, setDebitTipoConta] = useState('Conta Corrente / Débito');
+  const [debitSaldoInicial, setDebitSaldoInicial] = useState('0');
+  const [isSubmittingDebitAccount, setIsSubmittingDebitAccount] = useState(false);
+  const [debitAccountErrorMessage, setDebitAccountErrorMessage] = useState<string | null>(null);
+
+  // Modal 4: Lançar Movimentação no Débito (Despesa ou Depósito / Entrada de Saldo)
+  const [isDebitTxModalOpen, setIsDebitTxModalOpen] = useState(false);
+  const [debitTxContaId, setDebitTxContaId] = useState('');
+  const [debitTxTipo, setDebitTxTipo] = useState<'despesa' | 'deposito'>('despesa');
+  const [debitTxValor, setDebitTxValor] = useState('');
+  const [debitTxDescricao, setDebitTxDescricao] = useState('');
+  const [debitTxCategoria, setDebitTxCategoria] = useState('Geral');
+  const [debitTxData, setDebitTxData] = useState(new Date().toISOString().split('T')[0]);
+  const [debitTxObservacoes, setDebitTxObservacoes] = useState('');
+  const [isSubmittingDebitTx, setIsSubmittingDebitTx] = useState(false);
+  const [debitTxErrorMessage, setDebitTxErrorMessage] = useState<string | null>(null);
+
+  // Modal 5: Adicionar / Editar Limite Especial
   const [isSpecialLimitModalOpen, setIsSpecialLimitModalOpen] = useState(false);
   const [editingSpecialLimit, setEditingSpecialLimit] = useState<LimiteEspecial | null>(null);
   const [spNomeInstituicao, setSpNomeInstituicao] = useState('');
@@ -96,7 +132,7 @@ export const CardsPage: React.FC = () => {
   const [isSubmittingSpecialLimit, setIsSubmittingSpecialLimit] = useState(false);
   const [specialLimitErrorMessage, setSpecialLimitErrorMessage] = useState<string | null>(null);
 
-  // Modal 4: Lançar Utilização / Amortização de Limite Especial
+  // Modal 6: Lançar Utilização / Amortização de Limite Especial
   const [isSpTxModalOpen, setIsSpTxModalOpen] = useState(false);
   const [spTxLimitId, setSpTxLimitId] = useState('');
   const [spTxTipo, setSpTxTipo] = useState<'Utilização' | 'Amortização'>('Utilização');
@@ -110,6 +146,7 @@ export const CardsPage: React.FC = () => {
   // Toast notification
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [deletingDebitAccountId, setDeletingDebitAccountId] = useState<string | null>(null);
   const [deletingSpLimitId, setDeletingSpLimitId] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -126,7 +163,7 @@ export const CardsPage: React.FC = () => {
       const sql = getDb();
       await sql`SELECT set_config('app.current_user_id', ${user.id}, true);`;
 
-      const [cardsRaw, accountsRaw, transactionsRaw] = await Promise.all([
+      const [cardsRaw, accountsRaw, creditTxsRaw, debitTxsRaw] = await Promise.all([
         sql`SELECT * FROM cartoes_credito WHERE usuario_id = ${user.id} ORDER BY created_at DESC;`,
         sql`SELECT * FROM contas WHERE usuario_id = ${user.id} ORDER BY created_at ASC;`,
         sql`
@@ -135,23 +172,55 @@ export const CardsPage: React.FC = () => {
           JOIN cartoes_credito cc ON t.cartao_id = cc.id
           WHERE cc.usuario_id = ${user.id}
           ORDER BY t.data_vencimento ASC NULLS LAST, t.created_at DESC;
+        `,
+        sql`
+          SELECT t.*, c.nome_instituicao as conta_nome
+          FROM transacoes t
+          JOIN contas c ON t.conta_id = c.id
+          WHERE c.usuario_id = ${user.id} AND t.cartao_id IS NULL
+          ORDER BY t.data_pagamento DESC NULLS LAST, t.created_at DESC;
         `
       ]);
 
       const baseCards = cardsRaw as unknown as CartaoCredito[];
-      const accs = accountsRaw as unknown as Conta[];
-      const txs = (transactionsRaw as unknown as (Transacao & { cartao_nome?: string })[]).map((t) => ({
+      const accs = (accountsRaw as unknown as Conta[]).map(a => ({
+        ...a,
+        saldo_inicial: Number(a.saldo_inicial) || 0
+      }));
+
+      // If user has no account yet, create one default
+      if (accs.length === 0) {
+        const created = await sql`
+          INSERT INTO contas (usuario_id, nome_instituicao, saldo_inicial, tipo_conta)
+          VALUES (${user.id}, 'Conta Principal (Débito)', 0, 'Conta Corrente / Débito')
+          RETURNING id, usuario_id, nome_instituicao, saldo_inicial, tipo_conta, created_at;
+        `;
+        if (created && created.length > 0) {
+          accs.push({
+            ...(created[0] as unknown as Conta),
+            saldo_inicial: Number(created[0].saldo_inicial) || 0
+          });
+        }
+      }
+
+      const creditTxs = (creditTxsRaw as unknown as (Transacao & { cartao_nome?: string })[]).map((t) => ({
+        ...t,
+        valor: Number(t.valor) || 0
+      }));
+
+      const debTxs = (debitTxsRaw as unknown as (Transacao & { conta_nome?: string })[]).map((t) => ({
         ...t,
         valor: Number(t.valor) || 0
       }));
 
       setContas(accs);
-      setCardTransactions(txs);
+      setCardTransactions(creditTxs);
+      setDebitTransactions(debTxs);
 
-      // Compute metrics per card
+      // Compute metrics per credit card
       const enrichedCards: CardWithMetrics[] = baseCards.map((c) => {
         const limTotal = Number(c.limite_total) || 0;
-        const cardPendingTxs = txs.filter((t) => t.cartao_id === c.id && t.status !== 'Pago');
+        const cardPendingTxs = creditTxs.filter((t) => t.cartao_id === c.id && t.status !== 'Pago');
         const valorUtilizado = cardPendingTxs.reduce((acc, t) => acc + Math.abs(t.valor), 0);
         const limiteDisponivel = Math.max(0, limTotal - valorUtilizado);
         const percentualUtilizado = limTotal > 0 ? Math.min(100, Math.round((valorUtilizado / limTotal) * 100)) : 0;
@@ -164,22 +233,45 @@ export const CardsPage: React.FC = () => {
           percentualUtilizado
         };
       });
-
       setCards(enrichedCards);
+
+      // Compute metrics per debit account / card
+      const enrichedContas: ContaWithMetrics[] = accs.map((acc) => {
+        const sInicial = Number(acc.saldo_inicial) || 0;
+        const myTxs = debTxs.filter((t) => t.conta_id === acc.id);
+        const totalEntradas = myTxs
+          .filter((t) => (t.status === 'Pago' || t.status === 'Recebido') && t.valor > 0)
+          .reduce((sum, t) => sum + t.valor, 0);
+        const totalSaidas = myTxs
+          .filter((t) => t.status === 'Pago' && t.valor < 0)
+          .reduce((sum, t) => sum + Math.abs(t.valor), 0);
+        const saldoAtual = sInicial + totalEntradas - totalSaidas;
+
+        return {
+          ...acc,
+          saldo_inicial: sInicial,
+          totalEntradas,
+          totalSaidas,
+          saldoAtual,
+          transacoesCount: myTxs.length
+        };
+      });
+      setContasWithMetrics(enrichedContas);
 
       if (baseCards.length > 0 && !purchaseCartaoId) {
         setPurchaseCartaoId(baseCards[0].id);
       }
-      if (accs.length > 0 && !purchaseContaId) {
-        setPurchaseContaId(accs[0].id);
-        setSpContaId(accs[0].id);
+      if (accs.length > 0) {
+        if (!purchaseContaId) setPurchaseContaId(accs[0].id);
+        if (!spContaId) setSpContaId(accs[0].id);
+        if (!debitTxContaId) setDebitTxContaId(accs[0].id);
       }
     } catch (err) {
       console.error('Erro ao buscar cartões e transações:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, purchaseCartaoId, purchaseContaId]);
+  }, [user?.id, purchaseCartaoId, purchaseContaId, spContaId, debitTxContaId]);
 
   const loadSpecialLimitsData = useCallback(async () => {
     if (!user?.id) return;
@@ -209,7 +301,9 @@ export const CardsPage: React.FC = () => {
     return () => window.removeEventListener('transaction-created', handleCreated);
   }, [loadData, loadSpecialLimitsData]);
 
-  // Card Modal Handlers
+  // =========================================================================
+  // HANDLERS: CARTÃO DE CRÉDITO
+  // =========================================================================
   const handleOpenCreateCard = () => {
     setEditingCard(null);
     setNomeCartao('');
@@ -263,13 +357,13 @@ export const CardsPage: React.FC = () => {
               dia_vencimento = ${vencimento}
           WHERE id = ${editingCard.id} AND usuario_id = ${user.id};
         `;
-        showToast('Cartão atualizado com sucesso!');
+        showToast('Cartão de crédito atualizado com sucesso!');
       } else {
         await sql`
           INSERT INTO cartoes_credito (usuario_id, nome_cartao, limite_total, dia_fechamento, dia_vencimento)
           VALUES (${user.id}, ${nomeCartao.trim()}, ${numLimite}, ${fechamento}, ${vencimento});
         `;
-        showToast('Cartão cadastrado com sucesso!');
+        showToast('Cartão de crédito cadastrado com sucesso!');
       }
 
       setIsCardModalOpen(false);
@@ -311,7 +405,9 @@ export const CardsPage: React.FC = () => {
     }
   };
 
-  // Purchase Modal Handlers (Lançar Compra / Parcelamento)
+  // =========================================================================
+  // HANDLERS: COMPRA / PARCELAS (CRÉDITO)
+  // =========================================================================
   const handleOpenPurchaseModal = (targetCardId?: string) => {
     if (targetCardId) {
       setPurchaseCartaoId(targetCardId);
@@ -389,7 +485,184 @@ export const CardsPage: React.FC = () => {
     }
   };
 
-  // Special Limit (Cheque Especial) Handlers
+  // =========================================================================
+  // HANDLERS: CARTÃO DE DÉBITO / CONTA BANCÁRIA COM SALDO
+  // =========================================================================
+  const handleOpenCreateDebitAccount = () => {
+    setEditingDebitAccount(null);
+    setDebitNomeInstituicao('');
+    setDebitTipoConta('Conta Corrente / Débito');
+    setDebitSaldoInicial('0');
+    setDebitAccountErrorMessage(null);
+    setIsDebitAccountModalOpen(true);
+  };
+
+  const handleOpenEditDebitAccount = (conta: Conta) => {
+    setEditingDebitAccount(conta);
+    setDebitNomeInstituicao(conta.nome_instituicao);
+    setDebitTipoConta(conta.tipo_conta || 'Conta Corrente / Débito');
+    setDebitSaldoInicial(conta.saldo_inicial.toString());
+    setDebitAccountErrorMessage(null);
+    setIsDebitAccountModalOpen(true);
+  };
+
+  const handleSaveDebitAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id) return;
+    setDebitAccountErrorMessage(null);
+
+    const numSaldo = parseFloat(debitSaldoInicial.toString().replace(',', '.'));
+    if (!debitNomeInstituicao.trim()) {
+      setDebitAccountErrorMessage('Por favor, informe o nome da instituição ou cartão de débito.');
+      return;
+    }
+
+    if (isNaN(numSaldo)) {
+      setDebitAccountErrorMessage('Por favor, informe um saldo inicial válido (pode ser 0).');
+      return;
+    }
+
+    try {
+      setIsSubmittingDebitAccount(true);
+      const sql = getDb();
+      await sql`SELECT set_config('app.current_user_id', ${user.id}, true);`;
+
+      if (editingDebitAccount) {
+        await sql`
+          UPDATE contas 
+          SET nome_instituicao = ${debitNomeInstituicao.trim()},
+              tipo_conta = ${debitTipoConta},
+              saldo_inicial = ${numSaldo}
+          WHERE id = ${editingDebitAccount.id} AND usuario_id = ${user.id};
+        `;
+        showToast('Cartão de Débito / Conta atualizado com sucesso!');
+      } else {
+        await sql`
+          INSERT INTO contas (usuario_id, nome_instituicao, tipo_conta, saldo_inicial)
+          VALUES (${user.id}, ${debitNomeInstituicao.trim()}, ${debitTipoConta}, ${numSaldo});
+        `;
+        showToast('Cartão de Débito / Conta cadastrado com sucesso!');
+      }
+
+      setIsDebitAccountModalOpen(false);
+      setEditingDebitAccount(null);
+      await loadData();
+      window.dispatchEvent(new Event('transaction-created'));
+    } catch (err) {
+      console.error('Erro ao salvar conta/cartão débito:', err);
+      setDebitAccountErrorMessage('Erro ao salvar as informações no banco de dados.');
+    } finally {
+      setIsSubmittingDebitAccount(false);
+    }
+  };
+
+  const handleDeleteDebitAccount = async (conta: Conta) => {
+    if (!user?.id) return;
+
+    if (contas.length <= 1) {
+      alert('Você precisa manter pelo menos uma conta/cartão de débito principal no sistema.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Deseja realmente excluir o Cartão de Débito / Conta "${conta.nome_instituicao}"?\n\nTodas as movimentações vinculadas a esta conta serão removidas.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingDebitAccountId(conta.id);
+      const sql = getDb();
+      await sql`SELECT set_config('app.current_user_id', ${user.id}, true);`;
+
+      await sql`DELETE FROM transacoes WHERE conta_id = ${conta.id};`;
+      await sql`DELETE FROM contas WHERE id = ${conta.id} AND usuario_id = ${user.id};`;
+
+      showToast(`Conta/Cartão "${conta.nome_instituicao}" excluído com sucesso.`);
+      await loadData();
+      window.dispatchEvent(new Event('transaction-created'));
+    } catch (err) {
+      console.error('Erro ao excluir conta:', err);
+      alert('Não foi possível excluir a conta.');
+    } finally {
+      setDeletingDebitAccountId(null);
+    }
+  };
+
+  // =========================================================================
+  // HANDLERS: MOVIMENTAÇÃO NO DÉBITO (DESPESA OU DEPÓSITO DE SALDO)
+  // =========================================================================
+  const handleOpenDebitTxModal = (
+    targetContaId?: string,
+    defaultTipo: 'despesa' | 'deposito' = 'despesa'
+  ) => {
+    if (targetContaId) {
+      setDebitTxContaId(targetContaId);
+    } else if (contas.length > 0) {
+      setDebitTxContaId(contas[0].id);
+    }
+    setDebitTxTipo(defaultTipo);
+    setDebitTxValor('');
+    setDebitTxDescricao('');
+    setDebitTxCategoria(defaultTipo === 'despesa' ? 'Alimentação & Mercado' : 'Depósito / Saldo');
+    setDebitTxData(new Date().toISOString().split('T')[0]);
+    setDebitTxObservacoes('');
+    setDebitTxErrorMessage(null);
+    setIsDebitTxModalOpen(true);
+  };
+
+  const handleSaveDebitTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id) return;
+    setDebitTxErrorMessage(null);
+
+    const numValor = parseFloat(debitTxValor.replace(',', '.'));
+    if (!debitTxDescricao.trim() || isNaN(numValor) || numValor <= 0) {
+      setDebitTxErrorMessage('Informe uma descrição e um valor válido maior que zero.');
+      return;
+    }
+
+    if (!debitTxContaId) {
+      setDebitTxErrorMessage('Selecione o cartão de débito / conta bancária.');
+      return;
+    }
+
+    try {
+      setIsSubmittingDebitTx(true);
+      const finalValor = debitTxTipo === 'despesa' ? -Math.abs(numValor) : Math.abs(numValor);
+      const finalStatus = debitTxTipo === 'deposito' ? 'Recebido' : 'Pago';
+
+      await createTransaction(user.id, {
+        conta_id: debitTxContaId,
+        cartao_id: null,
+        descricao: debitTxDescricao.trim(),
+        categoria: debitTxCategoria,
+        valor: finalValor,
+        status: finalStatus,
+        data_pagamento: debitTxData,
+        data_vencimento: debitTxData,
+        observacoes: debitTxObservacoes.trim() || null
+      });
+
+      showToast(
+        debitTxTipo === 'despesa'
+          ? 'Despesa no Débito registrada com sucesso!'
+          : 'Depósito/Saldo creditado com sucesso na conta!'
+      );
+
+      setIsDebitTxModalOpen(false);
+      await loadData();
+      window.dispatchEvent(new Event('transaction-created'));
+    } catch (err) {
+      console.error('Erro ao lançar movimentação no débito:', err);
+      setDebitTxErrorMessage('Erro ao persistir a movimentação no banco de dados.');
+    } finally {
+      setIsSubmittingDebitTx(false);
+    }
+  };
+
+  // =========================================================================
+  // HANDLERS: LIMITE ESPECIAL (CHEQUE ESPECIAL)
+  // =========================================================================
   const handleOpenCreateSpecialLimit = () => {
     setEditingSpecialLimit(null);
     setSpNomeInstituicao('');
@@ -573,7 +846,7 @@ export const CardsPage: React.FC = () => {
 
   const handleDeleteTransaction = async (txId: string) => {
     if (!user?.id) return;
-    if (!window.confirm('Deseja excluir este lançamento de fatura?')) return;
+    if (!window.confirm('Deseja excluir este lançamento?')) return;
     try {
       const sql = getDb();
       await sql`SELECT set_config('app.current_user_id', ${user.id}, true);`;
@@ -605,10 +878,21 @@ export const CardsPage: React.FC = () => {
   };
 
   // Filtered transactions for the credit cards invoice table
-  const filteredTransactions = cardTransactions.filter((t) => {
+  const filteredCreditTransactions = cardTransactions.filter((t) => {
     if (selectedCardId === 'todos') return true;
     return t.cartao_id === selectedCardId;
   });
+
+  // Filtered transactions for the debit account extrato table
+  const filteredDebitTransactions = debitTransactions.filter((t) => {
+    if (selectedDebitContaId === 'todos') return true;
+    return t.conta_id === selectedDebitContaId;
+  });
+
+  // Consolidated metrics for Debit Accounts
+  const totalSaldoDebito = contasWithMetrics.reduce((acc, c) => acc + c.saldoAtual, 0);
+  const totalEntradasDebito = contasWithMetrics.reduce((acc, c) => acc + c.totalEntradas, 0);
+  const totalSaidasDebito = contasWithMetrics.reduce((acc, c) => acc + c.totalSaidas, 0);
 
   // Consolidated metrics for Special Limits
   const totalSpContratado = specialLimits.reduce((acc, l) => acc + l.limite_total, 0);
@@ -642,6 +926,19 @@ export const CardsPage: React.FC = () => {
     'Outros'
   ];
 
+  const categoriasDebito = [
+    'Alimentação & Mercado',
+    'Contas & Boletos',
+    'Transporte & Combustível',
+    'Saúde & Farmácia',
+    'Lazer & Entretenimento',
+    'Salário & Honorários',
+    'Transferência / Pix Recebido',
+    'Depósito / Saldo',
+    'Rendimentos / Investimento',
+    'Outros'
+  ];
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* Toast Alert */}
@@ -652,22 +949,23 @@ export const CardsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Main Tabs Header: Cartões de Crédito vs Limite Especial */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+      {/* Main Tabs Header: Cartões de Crédito vs Cartões de Débito vs Limite Especial */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <h2 className="text-2xl font-extrabold text-white tracking-tight">
-            Gestão de Cartões & Crédito Especial
+            Gestão de Cartões, Contas & Limites
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Controle faturas de cartões de crédito, parcelamentos e limites especiais contratados
+            Controle cartões de crédito, cartões de débito com saldo em conta e linhas de crédito especial
           </p>
         </div>
 
         {/* Tab Switcher Buttons */}
-        <div className="flex items-center p-1.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner self-start sm:self-auto">
+        <div className="flex flex-wrap items-center p-1.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner self-start lg:self-auto gap-1">
+          {/* TAB 1: Crédito */}
           <button
             onClick={() => setActiveTab('cartoes')}
-            className={`py-2 px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'cartoes'
                 ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/20'
                 : 'text-slate-400 hover:text-white'
@@ -680,9 +978,26 @@ export const CardsPage: React.FC = () => {
             </span>
           </button>
 
+          {/* TAB 2: Débito & Saldo */}
+          <button
+            onClick={() => setActiveTab('debito')}
+            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'debito'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-950 shadow-md shadow-emerald-500/20 font-extrabold'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Wallet className="w-4 h-4 stroke-[2.5]" />
+            <span>Cartões de Débito & Saldo</span>
+            <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-black/20 text-slate-950 font-mono font-bold">
+              {contasWithMetrics.length}
+            </span>
+          </button>
+
+          {/* TAB 3: Limite Especial */}
           <button
             onClick={() => setActiveTab('limite_especial')}
-            className={`py-2 px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'limite_especial'
                 ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold'
                 : 'text-slate-400 hover:text-white'
@@ -705,7 +1020,7 @@ export const CardsPage: React.FC = () => {
           {/* Subheader Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h3 className="text-lg font-bold text-white tracking-tight">Meus Cartões</h3>
+              <h3 className="text-lg font-bold text-white tracking-tight">Meus Cartões de Crédito</h3>
               <p className="text-xs text-slate-400">
                 Acompanhe o limite total, valor utilizado, faturas e compras parceladas
               </p>
@@ -727,7 +1042,7 @@ export const CardsPage: React.FC = () => {
                 className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white font-bold text-xs shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
               >
                 <PlusCircle className="w-4 h-4 stroke-[2.5]" />
-                <span>Adicionar Cartão</span>
+                <span>Adicionar Cartão de Crédito</span>
               </button>
             </div>
           </div>
@@ -745,7 +1060,7 @@ export const CardsPage: React.FC = () => {
                 <CreditCard className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Nenhum cartão cadastrado</h3>
+                <h3 className="text-base font-bold text-white">Nenhum cartão de crédito cadastrado</h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm">
                   Cadastre seus cartões de crédito para calcular limites, faturas e parcelamentos automaticamente.
                 </p>
@@ -755,7 +1070,7 @@ export const CardsPage: React.FC = () => {
                 className="py-2.5 px-5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-indigo-500/20"
               >
                 <PlusCircle className="w-4 h-4 stroke-[2.5]" />
-                <span>Cadastrar Meu Primeiro Cartão</span>
+                <span>Cadastrar Primeiro Cartão</span>
               </button>
             </div>
           ) : (
@@ -779,7 +1094,7 @@ export const CardsPage: React.FC = () => {
                     {/* Header: Name, Badge & Actions */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">
                           Cartão de Crédito
                         </span>
                         <h3 className="text-xl font-extrabold text-white mt-0.5 truncate" title={card.nome_cartao}>
@@ -885,8 +1200,8 @@ export const CardsPage: React.FC = () => {
                   <Layers className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Extrato de Compras & Parcelas</h3>
-                  <p className="text-xs text-slate-400">Detalhamento de faturas e compras divididas</p>
+                  <h3 className="text-base font-bold text-white">Extrato de Compras no Cartão de Crédito</h3>
+                  <p className="text-xs text-slate-400">Detalhamento de faturas e compras parceladas</p>
                 </div>
               </div>
 
@@ -898,7 +1213,7 @@ export const CardsPage: React.FC = () => {
                     onChange={(e) => setSelectedCardId(e.target.value)}
                     className="py-1.5 px-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                   >
-                    <option value="todos">Todos os Cartões</option>
+                    <option value="todos">Todos os Cartões de Crédito</option>
                     {cards.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.nome_cartao}
@@ -909,12 +1224,12 @@ export const CardsPage: React.FC = () => {
               )}
             </div>
 
-            {filteredTransactions.length === 0 ? (
+            {filteredCreditTransactions.length === 0 ? (
               <div className="py-12 text-center flex flex-col items-center justify-center space-y-3">
                 <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500">
                   <Tag className="w-6 h-6" />
                 </div>
-                <p className="text-sm font-semibold text-slate-300">Nenhuma compra registrada para este cartão</p>
+                <p className="text-sm font-semibold text-slate-300">Nenhuma compra registrada neste cartão de crédito</p>
                 <p className="text-xs text-slate-500">
                   Clique em "Lançar Compra / Parcelas" para registrar uma nova despesa dividida.
                 </p>
@@ -942,7 +1257,7 @@ export const CardsPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {filteredTransactions.map((t) => {
+                    {filteredCreditTransactions.map((t) => {
                       const isPaid = t.status === 'Pago' || t.status === 'Recebido';
                       return (
                         <tr key={t.id} className="hover:bg-slate-900/40 transition-colors group">
@@ -1001,7 +1316,387 @@ export const CardsPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* ABA 2: LIMITE ESPECIAL (CHEQUE ESPECIAL / CRÉDITO ESPECIAL) */}
+      {/* ABA 2: CARTÕES DE DÉBITO & SALDO EM CONTA */}
+      {/* ========================================================================= */}
+      {activeTab === 'debito' && (
+        <div className="space-y-8 animate-in fade-in duration-300">
+          {/* Subheader Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Saldo em Conta
+                </span>
+                <h3 className="text-lg font-bold text-white tracking-tight">Cartões de Débito & Contas Bancárias</h3>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Acompanhe o saldo atual em conta, saldo inicial e extrato de compras e depósitos no débito
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              {contasWithMetrics.length > 0 && (
+                <>
+                  <button
+                    onClick={() => handleOpenDebitTxModal(undefined, 'despesa')}
+                    className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-400 hover:to-pink-500 text-white font-bold text-xs shadow-lg shadow-rose-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <ArrowDownLeft className="w-4 h-4 stroke-[2.5]" />
+                    <span>Lançar Despesa no Débito</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenDebitTxModal(undefined, 'deposito')}
+                    className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+                    <span>Adicionar Saldo / Depósito</span>
+                  </button>
+                </>
+              )}
+
+              <button
+                onClick={handleOpenCreateDebitAccount}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white font-bold text-xs shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                <PlusCircle className="w-4 h-4 stroke-[2.5]" />
+                <span>Adicionar Cartão de Débito</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Consolidated Debit Balance Banner */}
+          {contasWithMetrics.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="glass-card rounded-2xl p-5 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider">
+                    Saldo Total em Débito
+                  </span>
+                  <p className="text-2xl font-extrabold text-emerald-300 font-mono mt-0.5">
+                    {formatCurrency(totalSaldoDebito)}
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <Wallet className="w-5 h-5 stroke-[2.5]" />
+                </div>
+              </div>
+
+              <div className="glass-card rounded-2xl p-5 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-teal-400 tracking-wider">
+                    Total de Entradas / Depósitos
+                  </span>
+                  <p className="text-xl font-extrabold text-teal-300 font-mono mt-0.5">
+                    + {formatCurrency(totalEntradasDebito)}
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-teal-500/10 text-teal-400">
+                  <TrendingUp className="w-5 h-5 stroke-[2.5]" />
+                </div>
+              </div>
+
+              <div className="glass-card rounded-2xl p-5 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-rose-400 tracking-wider">
+                    Total de Saídas no Débito
+                  </span>
+                  <p className="text-xl font-extrabold text-rose-400 font-mono mt-0.5">
+                    - {formatCurrency(totalSaidasDebito)}
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-rose-500/10 text-rose-400">
+                  <TrendingDown className="w-5 h-5 stroke-[2.5]" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Debit Cards Grid */}
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-64 bg-slate-900/60 rounded-3xl animate-pulse" />
+              ))}
+            </div>
+          ) : contasWithMetrics.length === 0 ? (
+            <div className="glass-card rounded-3xl p-12 text-center flex flex-col items-center justify-center space-y-4 border border-slate-800">
+              <div className="p-4 rounded-2xl bg-emerald-500/10 text-emerald-400">
+                <Wallet className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Nenhum cartão de débito cadastrado</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                  Cadastre sua conta bancária ou cartão de débito para acompanhar o saldo atual e controlar despesas e depósitos.
+                </p>
+              </div>
+              <button
+                onClick={handleOpenCreateDebitAccount}
+                className="py-2.5 px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20"
+              >
+                <PlusCircle className="w-4 h-4 stroke-[2.5]" />
+                <span>Cadastrar Cartão de Débito</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {contasWithMetrics.map((conta, idx) => {
+                const gradients = [
+                  'from-slate-900 via-teal-950/60 to-slate-900 border-teal-500/30 shadow-teal-500/10',
+                  'from-slate-900 via-cyan-950/60 to-slate-900 border-cyan-500/30 shadow-cyan-500/10',
+                  'from-slate-900 via-emerald-950/60 to-slate-900 border-emerald-500/30 shadow-emerald-500/10',
+                ];
+                const currentGradient = gradients[idx % gradients.length];
+                const isDeleting = deletingDebitAccountId === conta.id;
+                const isPositiveBalance = conta.saldoAtual >= 0;
+
+                return (
+                  <div
+                    key={conta.id}
+                    className={`rounded-3xl p-6 bg-gradient-to-br ${currentGradient} border shadow-xl flex flex-col justify-between space-y-4 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 ${
+                      isDeleting ? 'opacity-50 pointer-events-none' : ''
+                    }`}
+                  >
+                    {/* Metallic/Chip decorative element */}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+
+                    {/* Header: Institution Name & Quick Actions */}
+                    <div className="flex items-start justify-between gap-2 relative z-10">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            CARTÃO DE DÉBITO
+                          </span>
+                        </div>
+                        <h3 className="text-xl font-extrabold text-white mt-1 truncate" title={conta.nome_instituicao}>
+                          {conta.nome_instituicao}
+                        </h3>
+                        <span className="text-[11px] text-slate-400 block">
+                          {conta.tipo_conta || 'Conta Corrente / Débito'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => handleOpenDebitTxModal(conta.id, 'despesa')}
+                          title="Lançar compra no débito"
+                          className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white transition-all cursor-pointer backdrop-blur-sm border border-rose-500/30"
+                        >
+                          <ArrowDownLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenDebitTxModal(conta.id, 'deposito')}
+                          title="Adicionar saldo / depósito"
+                          className="p-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 transition-all cursor-pointer backdrop-blur-sm border border-emerald-500/30"
+                        >
+                          <ArrowUpRight className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenEditDebitAccount(conta)}
+                          title="Editar dados da conta"
+                          className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer backdrop-blur-sm shadow-sm"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDebitAccount(conta)}
+                          title="Excluir conta"
+                          className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white transition-all cursor-pointer backdrop-blur-sm border border-rose-500/20"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Chip and Contactless visual icon */}
+                    <div className="flex items-center justify-between py-1 relative z-10">
+                      <div className="w-10 h-7 rounded-lg bg-gradient-to-tr from-amber-400/80 via-amber-200/90 to-amber-500/80 border border-amber-300/60 shadow-sm flex items-center justify-center">
+                        <div className="w-6 h-4 border border-amber-950/30 rounded flex items-center justify-center">
+                          <div className="w-3 h-2 border-r border-amber-950/30" />
+                        </div>
+                      </div>
+                      <span className="font-mono text-xs text-slate-500 tracking-widest">
+                        •••• •••• •••• {conta.id.slice(-4)}
+                      </span>
+                    </div>
+
+                    {/* Center Saldo Atual Display */}
+                    <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 relative z-10">
+                      <span className="text-[10px] font-bold uppercase text-slate-400 block tracking-wider">
+                        Saldo Atual em Conta / Débito
+                      </span>
+                      <p
+                        className={`text-2xl font-black font-mono mt-1 ${
+                          isPositiveBalance ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {formatCurrency(conta.saldoAtual)}
+                      </p>
+                    </div>
+
+                    {/* Footer Summary: Saldo Inicial, Entradas e Saídas */}
+                    <div className="pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-center text-xs relative z-10">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Saldo Inicial</span>
+                        <span className="font-mono font-semibold text-slate-300">
+                          {formatCurrency(conta.saldo_inicial)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-teal-400 block">Entradas</span>
+                        <span className="font-mono font-semibold text-teal-300">
+                          +{formatCurrency(conta.totalEntradas)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-rose-400 block">Saídas Débito</span>
+                        <span className="font-mono font-semibold text-rose-400">
+                          -{formatCurrency(conta.totalSaidas)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Debit Transactions Extrato Table */}
+          <div className="glass-card rounded-3xl border border-slate-800/80 overflow-hidden space-y-4 p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <Wallet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Extrato de Movimentações no Débito</h3>
+                  <p className="text-xs text-slate-400">Histórico de despesas e depósitos debitados/creditados na conta</p>
+                </div>
+              </div>
+
+              {contasWithMetrics.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400">Filtrar por Conta:</label>
+                  <select
+                    value={selectedDebitContaId}
+                    onChange={(e) => setSelectedDebitContaId(e.target.value)}
+                    className="py-1.5 px-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    <option value="todos">Todas as Contas / Cartões Débito</option>
+                    {contasWithMetrics.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome_instituicao} (Saldo: {formatCurrency(c.saldoAtual)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {filteredDebitTransactions.length === 0 ? (
+              <div className="py-12 text-center flex flex-col items-center justify-center space-y-3">
+                <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-500">
+                  <Tag className="w-6 h-6" />
+                </div>
+                <p className="text-sm font-semibold text-slate-300">Nenhuma movimentação registrada nesta conta</p>
+                <p className="text-xs text-slate-500">
+                  Utilize os botões "Lançar Despesa no Débito" ou "Adicionar Saldo" para movimentar a conta.
+                </p>
+                {contasWithMetrics.length > 0 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      onClick={() => handleOpenDebitTxModal(undefined, 'despesa')}
+                      className="py-2 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <ArrowDownLeft className="w-4 h-4" />
+                      <span>Lançar Débito</span>
+                    </button>
+                    <button
+                      onClick={() => handleOpenDebitTxModal(undefined, 'deposito')}
+                      className="py-2 px-4 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                      <span>Adicionar Saldo</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                    <tr>
+                      <th className="py-3 px-4">Descrição / Estabelecimento</th>
+                      <th className="py-3 px-4">Cartão / Conta</th>
+                      <th className="py-3 px-4">Data Pagamento</th>
+                      <th className="py-3 px-4 text-center">Tipo</th>
+                      <th className="py-3 px-4 text-right">Valor</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {filteredDebitTransactions.map((t) => {
+                      const isEntry = t.valor > 0;
+                      return (
+                        <tr key={t.id} className="hover:bg-slate-900/40 transition-colors group">
+                          <td className="py-3.5 px-4">
+                            <div>
+                              <p className="font-semibold text-white truncate max-w-xs">{t.descricao}</p>
+                              <span className="text-[11px] text-slate-400">{t.categoria || 'Geral'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-300 font-medium">
+                            {t.conta_nome || 'Conta'}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-300 font-mono">
+                            {formatDate(t.data_pagamento || t.data_vencimento || t.created_at)}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                isEntry
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                  : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                              }`}
+                            >
+                              {isEntry ? 'Entrada / Depósito' : 'Saída Débito'}
+                            </span>
+                          </td>
+                          <td
+                            className={`py-3.5 px-4 text-right font-mono font-bold ${
+                              isEntry ? 'text-emerald-400' : 'text-rose-400'
+                            }`}
+                          >
+                            {isEntry ? '+' : '-'} {formatCurrency(Math.abs(t.valor))}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 border-emerald-500/30 text-emerald-400">
+                              Efetivado
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <button
+                              onClick={() => handleDeleteTransaction(t.id)}
+                              title="Excluir lançamento"
+                              className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ABA 3: LIMITE ESPECIAL (CHEQUE ESPECIAL / CRÉDITO ESPECIAL) */}
       {/* ========================================================================= */}
       {activeTab === 'limite_especial' && (
         <div className="space-y-8 animate-in fade-in duration-300">
@@ -1366,7 +2061,7 @@ export const CardsPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">
-                    {editingCard ? 'Editar Cartão' : 'Cadastrar Cartão'}
+                    {editingCard ? 'Editar Cartão de Crédito' : 'Cadastrar Cartão de Crédito'}
                   </h3>
                   <p className="text-xs text-slate-400">
                     {editingCard
@@ -1497,7 +2192,7 @@ export const CardsPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 2: Lançar Compra / Parcelas no Cartão */}
+      {/* MODAL 2: Lançar Compra / Parcelas no Cartão de Crédito */}
       {/* ========================================================================= */}
       {isPurchaseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -1508,7 +2203,7 @@ export const CardsPage: React.FC = () => {
                   <ShoppingBag className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Lançar Compra no Cartão</h3>
+                  <h3 className="text-lg font-bold text-white">Lançar Compra no Cartão de Crédito</h3>
                   <p className="text-xs text-slate-400">
                     Registre compras à vista ou divididas em várias parcelas
                   </p>
@@ -1530,7 +2225,6 @@ export const CardsPage: React.FC = () => {
             )}
 
             <form onSubmit={handleSavePurchase} className="mt-5 space-y-4">
-              {/* Seleção do Cartão */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
                   Cartão de Crédito *
@@ -1549,7 +2243,6 @@ export const CardsPage: React.FC = () => {
                 </select>
               </div>
 
-              {/* Descrição */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
                   Descrição da Compra *
@@ -1564,7 +2257,6 @@ export const CardsPage: React.FC = () => {
                 />
               </div>
 
-              {/* Valor Total & Parcelas */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -1611,7 +2303,6 @@ export const CardsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Dynamic Live Parcel Preview Banner */}
               {previewValorTotal > 0 && (
                 <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border border-emerald-500/30 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs text-emerald-300">
@@ -1634,7 +2325,6 @@ export const CardsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Data 1ª Parcela & Categoria */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -1667,7 +2357,6 @@ export const CardsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Conta Bancária Vinculada */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
                   Conta Bancária (para quitação da fatura) *
@@ -1686,7 +2375,6 @@ export const CardsPage: React.FC = () => {
                 </select>
               </div>
 
-              {/* Observações */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
                   Observações (Opcional)
@@ -1700,7 +2388,6 @@ export const CardsPage: React.FC = () => {
                 />
               </div>
 
-              {/* Action Buttons */}
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
                 <button
                   type="button"
@@ -1733,7 +2420,359 @@ export const CardsPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 3: Cadastrar / Editar Limite Especial */}
+      {/* MODAL 3: Cadastrar / Editar Cartão de Débito / Conta Bancária */}
+      {/* ========================================================================= */}
+      {isDebitAccountModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="glass-card rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-700/80 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <Wallet className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    {editingDebitAccount ? 'Editar Cartão de Débito' : 'Cadastrar Cartão de Débito'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {editingDebitAccount
+                      ? 'Atualize o nome e o saldo inicial da conta'
+                      : 'Cadastre sua conta bancária / cartão com saldo inicial'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsDebitAccountModalOpen(false);
+                  setEditingDebitAccount(null);
+                }}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {debitAccountErrorMessage && (
+              <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{debitAccountErrorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveDebitAccount} className="mt-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Nome do Cartão / Instituição Bancária *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Nubank Débito, Itaú Conta Corrente, Inter, C6 Bank"
+                  value={debitNomeInstituicao}
+                  onChange={(e) => setDebitNomeInstituicao(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-sm border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder:text-slate-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Tipo de Conta / Cartão
+                </label>
+                <select
+                  value={debitTipoConta}
+                  onChange={(e) => setDebitTipoConta(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="Conta Corrente / Débito">Conta Corrente / Débito</option>
+                  <option value="Conta Poupança">Conta Poupança</option>
+                  <option value="Conta Salário">Conta Salário</option>
+                  <option value="Conta Investimento">Conta Investimento</option>
+                  <option value="Cartão Pré-pago">Cartão Pré-pago</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Saldo Inicial Cadastrado (R$) *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={debitSaldoInicial}
+                    onChange={(e) => setDebitSaldoInicial(e.target.value)}
+                    required
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder:text-slate-500"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Saldo disponível na abertura ou ponto de partida
+                </span>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDebitAccountModalOpen(false);
+                    setEditingDebitAccount(null);
+                  }}
+                  className="py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDebitAccount}
+                  className="py-2.5 px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingDebitAccount ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : editingDebitAccount ? (
+                    'Salvar Alterações'
+                  ) : (
+                    'Cadastrar Cartão de Débito'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: Lançar Movimentação no Débito (Despesa vs Depósito) */}
+      {/* ========================================================================= */}
+      {isDebitTxModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="glass-card rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-700/80 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`p-2 rounded-xl ${
+                    debitTxTipo === 'despesa'
+                      ? 'bg-rose-500/10 text-rose-400'
+                      : 'bg-emerald-500/10 text-emerald-400'
+                  }`}
+                >
+                  {debitTxTipo === 'despesa' ? (
+                    <ArrowDownLeft className="w-5 h-5 stroke-[2.5]" />
+                  ) : (
+                    <ArrowUpRight className="w-5 h-5 stroke-[2.5]" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    {debitTxTipo === 'despesa' ? 'Lançar Despesa no Débito' : 'Adicionar Saldo / Depósito'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {debitTxTipo === 'despesa'
+                      ? 'Debitar valor imediatamente do saldo da conta'
+                      : 'Creditar depósito ou receita no saldo da conta'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDebitTxModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {debitTxErrorMessage && (
+              <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{debitTxErrorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveDebitTx} className="mt-5 space-y-4">
+              {/* Toggle Tipo: Despesa vs Depósito */}
+              <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-900 border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDebitTxTipo('despesa');
+                    if (debitTxCategoria === 'Depósito / Saldo') {
+                      setDebitTxCategoria('Alimentação & Mercado');
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    debitTxTipo === 'despesa'
+                      ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <ArrowDownLeft className="w-4 h-4 stroke-[2.5]" />
+                  <span>Despesa (Débito)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDebitTxTipo('deposito');
+                    if (debitTxCategoria === 'Alimentação & Mercado') {
+                      setDebitTxCategoria('Depósito / Saldo');
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    debitTxTipo === 'deposito'
+                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+                  <span>Depósito (Entrada)</span>
+                </button>
+              </div>
+
+              {/* Cartão de Débito / Conta */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Cartão de Débito / Conta Bancária *
+                </label>
+                <select
+                  value={debitTxContaId}
+                  onChange={(e) => setDebitTxContaId(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  {contasWithMetrics.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome_instituicao} (Saldo Atual: {formatCurrency(c.saldoAtual)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Descrição */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Descrição da Movimentação *
+                </label>
+                <input
+                  type="text"
+                  placeholder={
+                    debitTxTipo === 'despesa'
+                      ? 'Ex: Supermercado Pão de Açúcar, Posto Shell, Farmácia'
+                      : 'Ex: Depósito em conta, Salário, Pix Recebido, Transferência'
+                  }
+                  value={debitTxDescricao}
+                  onChange={(e) => setDebitTxDescricao(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-sm border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder:text-slate-500"
+                />
+              </div>
+
+              {/* Valor & Data */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    Valor (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0,00"
+                    value={debitTxValor}
+                    onChange={(e) => setDebitTxValor(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    Data do Pagamento *
+                  </label>
+                  <input
+                    type="date"
+                    value={debitTxData}
+                    onChange={(e) => setDebitTxData(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Categoria */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Categoria
+                </label>
+                <select
+                  value={debitTxCategoria}
+                  onChange={(e) => setDebitTxCategoria(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  {categoriasDebito.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Observações */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Observações (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Pago com cartão físico de aproximação"
+                  value={debitTxObservacoes}
+                  onChange={(e) => setDebitTxObservacoes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs border border-slate-700/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsDebitTxModalOpen(false)}
+                  className="py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDebitTx}
+                  className={`py-2.5 px-5 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                    debitTxTipo === 'despesa'
+                      ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-500/20'
+                      : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                  }`}
+                >
+                  {isSubmittingDebitTx ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{debitTxTipo === 'despesa' ? 'Confirmar Despesa Débito' : 'Confirmar Depósito'}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: Cadastrar / Editar Limite Especial */}
       {/* ========================================================================= */}
       {isSpecialLimitModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -1903,7 +2942,7 @@ export const CardsPage: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 4: Lançar Utilização / Amortização de Limite Especial */}
+      {/* MODAL 6: Lançar Utilização / Amortização de Limite Especial */}
       {/* ========================================================================= */}
       {isSpTxModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">

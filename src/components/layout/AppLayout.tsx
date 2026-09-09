@@ -39,10 +39,10 @@ export const AppLayout: React.FC = () => {
       description: 'Contas a pagar e receber'
     },
     {
-      label: 'Cartões de Crédito',
+      label: 'Cartões & Contas',
       path: '/cartoes',
       icon: CreditCard,
-      description: 'Faturas e limites'
+      description: 'Crédito, débito e limites'
     },
     {
       label: 'Módulo Imobiliário',
