@@ -24,6 +24,30 @@ export interface CartaoCredito {
   created_at?: string;
 }
 
+export interface LimiteEspecial {
+  id: string;
+  usuario_id: string;
+  conta_id?: string | null;
+  nome_instituicao: string;
+  limite_total: number;
+  taxa_juros_mensal?: number;
+  dia_vencimento?: number;
+  observacoes?: string | null;
+  conta_nome?: string;
+  created_at?: string;
+}
+
+export interface TransacaoLimiteEspecial {
+  id: string;
+  limite_especial_id: string;
+  tipo: 'Utilização' | 'Amortização';
+  valor: number;
+  data_operacao: string;
+  descricao: string;
+  observacoes?: string | null;
+  created_at?: string;
+}
+
 export interface ImovelDocumento {
   id: string;
   nome: string;
