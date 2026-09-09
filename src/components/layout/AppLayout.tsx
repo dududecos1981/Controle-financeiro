@@ -17,6 +17,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { QuickTransactionModal } from '../dashboard/QuickTransactionModal';
+import { MarketTickerSidebar } from './MarketTickerSidebar';
 
 export const AppLayout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -182,8 +183,11 @@ export const AppLayout: React.FC = () => {
           </nav>
         </div>
 
-        {/* Sidebar Footer (Status & User Account) */}
+        {/* Sidebar Footer (Market Ticker, Status & User Account) */}
         <div className="p-4 border-t border-slate-800/80 space-y-3">
+          {/* Live Market Ticker (Dólar & Ibovespa B3) */}
+          <MarketTickerSidebar />
+
           {/* Database Neon Indicator */}
           <div className="px-3 py-2 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-slate-400">
